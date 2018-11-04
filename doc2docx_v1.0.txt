@@ -1,0 +1,697 @@
+import os
+import openpyxl
+import copy
+import docx
+from win32com import client as wc
+#定义抽取对象的数据结构
+PaparInfo = {'SNo':'','Sname':'','PaparTitle':'','Tname':'',\
+            'Tlevel':'','Collega':'','Major':'','Class':'',\
+             'Cnabstract':'','Cnkey':'','Enabstract':'',\
+             'Enkey':'','Refercontext':'','Levle':''
+            }
+#电子表格写入列信息查询表
+ExcleColumNamesTable = {'SNo':2,'Sname':3,'PaparTitle':4,'Tname':5,\
+                        'Tlevel':6,'Collega':7,'Major':8,'Class':9,\
+                        'Cnabstract':10,'Cnkey':11,'Enabstract':12,\
+                        'Enkey':13,'Refercontext':14,'Levle':1
+                        }
+#获取当前文件夹下所有的文件夹路径
+def getAllFolder(_pathName):
+    try:
+        folderlists = []
+        for i,j,k in os.walk(_pathName):
+            folderlists.append(i)
+        return folderlists
+    except  Exception as err:
+        print('getAllFolder' + str(err))
+#获取当前文件夹下的文件名集合
+def getCurrentFilenames(folderdir):
+    return os.listdir(folderdir)
+#筛分离DOC和docx两种文档
+def splitDocFromDocx(filenames):
+    docFiles = []
+    docxFiles = []
+    for fn in filenames:
+        if '.docx' in fn:
+            docxFiles.append(fn)
+        elif '.doc' in fn:
+            docFiles.append(fn)
+    return docFiles,docxFiles
+'''
+for i,j,k in myWalk:
+    for ii in k:
+        if ii != '':
+            listFileNames.append(ii)
+print(len(listFileNames))#output how many files in this flold!
+
+for i in listFileNames:
+    if '.docx' in i:
+        listDocxFiles.append(i)
+    elif '.doc' in i :
+        listDocFiles.append(i)
+print(listDocFiles)#output doc files'name
+print(listDocxFiles)#output docx files's name
+'''
+#检查是否重复转换，获取最终转换文件名列表
+def delRepeatFiles(docfiles,docxfiles):
+    temp = []
+    for i in docfiles:
+        for j in docxfiles:
+            if str(i) + 'x' == str(j):
+                temp.append(i)
+    for i in temp:
+        docfiles.remove(i)
+    return docfiles
+#删除~$临时文件
+def delTempDocxFiles(docxfiles):
+    temp = []
+    for i in docxfiles:
+        if '~$' in str(i):
+            temp.append(i)
+    for i in temp:
+        docxfiles.remove(i)
+    return docxfiles
+#doc2docx,返回转换列表
+def doc2docx(folderdir,docfiles,docxfiles):
+    if docfiles == '':
+        return docxfiles
+    word = wc.Dispatch("Word.Application")
+    for files in docfiles:
+        try:
+            temp_path = folderdir + '\\' + str(files)
+            temp_doc = word.Documents.Open(temp_path)
+            temp_doc.SaveAs(temp_path + 'x',16)
+            docxfiles.append(str(files) + 'x')
+            temp_doc.Close()
+        except Exception as err:
+            print('doc2docx: ' + files + str(err))
+    word.Quit()
+    return docxfiles
+'''
+for i in listDocFiles:#循环将DOC2DOCX
+    temp_path = pathName + '\\' + str(i)
+    temp_doc = word.Documents.Open(temp_path)
+    temp_doc.SaveAs(temp_path + 'x',16)
+    listDocxFiles.append(str(i) + 'x')
+    temp_doc.Close()
+word.Quit()
+'''
+
+
+def getText(filename):#将DOCX转换成以自然段为单位的列表结构
+    doc = docx.Document(filename)
+    fullText = []
+    for para in doc.paragraphs:
+        fullText.append(para.text.strip())
+    return fullText
+
+
+def cleanStringEnSpace(stringText):#清洗字符串半角空格
+    return stringText.replace(' ','')
+
+def cleanStringFullSpace(stringText):#清洗字符串全角空格
+    _stringText = ''
+    for uchar in stringText:
+        charcode = ord(uchar)
+        if charcode == 12288 :
+            continue
+        _stringText += chr(charcode)
+    return _stringText
+
+def cleanDoubleSpace(stringText):#用于中文关键词，将连续空格分解为分号
+    _stringText = ''
+    _stringTextList = stringText.split(' ')
+    for i in _stringTextList:
+        if i.strip() != '':
+            _stringText = _stringText + i + '；'
+    return _stringText[0:len(_stringText)-1]
+
+'''
+tempText = []#论文内容
+SNo = ''#学号
+Sname = ''#学生姓名
+Collega = ''#学院
+Major = ''#专业
+Class = ''#专业
+PaparTitle = ''#论文题目
+Tname = ''#指导老师
+Tlevel = ''#老师职称
+Cnabstract = ''#中文摘要
+Cnkey = ''#中文关键词
+CnRefer = ''#中文参考文献
+'''
+
+#tempText = getText(r'D:\论文\121304044.docx')
+#获取题目
+def getPaparTitle(tempText):
+    PaparTitle = ''
+    for temp in tempText:
+        if temp == '':
+            continue
+        temp = cleanStringEnSpace(temp)
+        temp = cleanStringFullSpace(temp)
+        if '题目' in temp:
+            PaparTitle = temp.replace('题目','')
+            break
+    PaparTitle = PaparTitle.replace(':','').replace('：','')
+    if PaparTitle == '':
+        for i in range(len(tempText)):
+            if tempText[i] == '':
+                continue
+            temp = cleanStringEnSpace(tempText[i])
+            temp = cleanStringFullSpace(temp)
+            if '毕业论文' in temp:
+                for j in range(i,len(tempText),1):
+                    if tempText[j] == '':
+                        continue
+                    temp2 = cleanStringFullSpace(tempText[j])
+                    if cleanStringEnSpace(temp2).isalpha() :
+                        PaparEnTitle =  temp2
+                        for jj in range(j,len(tempText),1):
+                            if tempText[jj] == '':
+                                break
+                            elif cleanStringEnSpace(tempText[jj]).isalpha():
+                                PaparEnTitle = PaparEnTitle + tempText[jj]
+                            else:
+                                PaparTitle = tempText[jj]
+
+
+    return PaparTitle
+#获取学院和专业
+def getCollegaAndMajor(tempText):
+    Collega = ''
+    Major = ''
+    Class = ''
+    for temp in tempText:
+        if temp == '':
+            continue
+        temp = cleanStringEnSpace(temp)
+        if '学院' in temp and '专业' in temp and '级' in temp:
+            Class = temp.split('级')[1].replace('\t','')
+            _temp = temp.split('专业')[0].replace('\t','')
+            _temp = _temp.split('学院')
+            Collega = _temp[0]
+            Major = _temp[1]
+            break
+    return Collega,Major,Class
+
+#获取学生姓名和学号
+def getSnameAndSNo(tempText):
+    Sname = ''
+    SNo = ''
+    for temp in tempText:
+        if temp == '':
+            continue
+        temp = cleanStringEnSpace(temp)
+        if '学生姓名' in temp:
+            Sname = temp.replace('学生姓名','')
+            _temp = Sname.split('学号')
+            Sname = _temp[0].replace('\t','')
+            SNo = _temp[1].replace('学号','').replace('\t','')
+            break
+    return Sname,SNo
+#获取指导教师
+def getTname(tempText):
+    Tname = ''
+    for temp in tempText:
+        if temp == '':
+            continue
+        temp = cleanStringEnSpace(temp)
+        if '指导教师' in temp:
+            Tname = temp.replace('指导教师','')
+            Tname = Tname.split('职称')[0].replace('\t','')
+            break
+        elif '指导老师' in temp:
+            Tname = temp.replace('指导老师', '')
+            Tname = Tname.split('职称')[0].replace('\t', '')
+            break
+    return Tname.strip()
+
+#获取老师职称
+def getTlevel(tempText):
+    Tlevel = ''
+    for temp in tempText:
+        if temp == '':
+            continue
+        temp = cleanStringEnSpace(temp)
+        if '职称' in temp:
+            Tlevel = temp.split('职称')[1].replace('\t','')
+            break
+    return Tlevel
+
+#获取中文摘要
+def getCnabstract(tempText):
+    Cnabstract = ''
+    for i in range(len(tempText)):
+        if tempText[i] == '':
+            continue
+        temp = cleanStringEnSpace(tempText[i])
+        temp = cleanStringFullSpace(temp)
+        if '【摘要】' in temp:
+            Cnabstract = temp.split('【摘要】')[1]
+            j = i + 1
+            while j < len(tempText):
+                if tempText[j] == '':
+                    break
+                temp2 = cleanStringEnSpace(tempText[j])
+                temp2 = cleanStringFullSpace(temp2)
+                if '【关键词】' in temp2:
+                    break
+                else:
+                    Cnabstract = Cnabstract + '\n' + temp2
+                    j = j + 1
+                    continue
+                if '[关键词]' in temp2:
+                    break
+                else:
+                    Cnabstract = Cnabstract + '\n' + temp2
+                    j = j + 1
+                    continue
+            break
+        if '[摘要]' in temp:
+            Cnabstract = temp.split('[摘要]')[1]
+            j = i + 1
+            while j < len(tempText):
+                if tempText[j] == '':
+                    break
+                temp2 = cleanStringEnSpace(tempText[j])
+                temp2 = cleanStringFullSpace(temp2)
+                if '【关键词】'  in temp2:
+                    break
+                else:
+                    Cnabstract = Cnabstract + '\n' + temp2
+                    j = j + 1
+                    continue
+                if '[关键词]'  in temp2:
+                    break
+                else:
+                    Cnabstract = Cnabstract + '\n' + temp2
+                    j = j + 1
+                    continue
+            break
+    return Cnabstract
+
+#获取中文关键词
+def getCnKey(tempText):
+    Cnkey = ''
+    for i in range(len(tempText)):
+        if tempText[i] == '':
+            continue
+        temp = cleanStringFullSpace(tempText[i])
+        temp = temp.strip()
+        if '【关键词】' in temp:
+            temp = temp.split('【关键词】')[1]
+            if '；' in temp:
+                tempText2 = tempText[i + 1].replace(' ', '')
+                if tempText2 != '' and '绪论' not in tempText2 and\
+                                '第一章' not in tempText2 and '引言' not in tempText2:
+                    temp = temp + tempText[i + 1]
+                    Cnkey = cleanStringEnSpace(temp)
+                    break
+                else:
+                    Cnkey = cleanStringEnSpace(temp)
+                    break
+            if ';' in temp:
+                tempText2 = tempText[i + 1].replace(' ', '')
+                if tempText2 != '' and '绪论' not in tempText2 and \
+                                '第一章' not in tempText2 and '引言' not in tempText2:
+                    temp = temp + tempText[i + 1]
+                    Cnkey = cleanStringEnSpace(temp)
+                    Cnkey = Cnkey.replace(';','；')
+                    break
+                else:
+                    Cnkey = cleanStringEnSpace(temp)
+                    Cnkey = Cnkey.replace(';', '；')
+                    break
+            if '，' in temp:
+                tempText2 = tempText[i + 1].replace(' ', '')
+                if tempText2!= ''and '绪论'not in tempText2 and \
+                                '第一章'not in tempText2 and '引言' not in tempText2:
+                    temp = temp + tempText[i + 1]
+                    Cnkey = cleanStringEnSpace(temp)
+                    Cnkey = Cnkey.replace('，','；')
+                    break
+                else:
+                    Cnkey = cleanStringEnSpace(temp)
+                    Cnkey = Cnkey.replace('，','；')
+                    break
+            if ',' in temp:
+                tempText2 = tempText[i + 1].replace(' ', '')
+                if tempText2 != '' and '绪论' not in tempText2 and \
+                                '第一章' not in tempText2 and '引言' not in tempText2:
+                    temp = temp + tempText[i + 1]
+                    Cnkey = cleanStringEnSpace(temp)
+                    Cnkey = Cnkey.replace(',', '；')
+                    break
+                else:
+                    Cnkey = cleanStringEnSpace(temp)
+                    Cnkey = Cnkey.replace(',', '；')
+                    break
+            if  ' ' in temp:
+                tempText2 = tempText[i + 1].replace(' ', '')
+                if tempText2 != '' and '绪论' not in tempText2 and \
+                                '第一章' not in tempText2 and '引言' not in tempText2:
+                    temp = temp + tempText[i+1]
+                    Cnkey = cleanDoubleSpace(temp)
+                    break
+        if '[关键词]' in temp:
+            temp = temp.split('[关键词]')[1]
+            if '；' in temp:
+                tempText2 = tempText[i + 1].replace(' ', '')
+                if tempText2 != '' and '绪论' not in tempText2 and \
+                                '第一章' not in tempText2 and '引言' not in tempText2:
+                    temp = temp + tempText[i + 1]
+                    Cnkey = cleanStringEnSpace(temp)
+                    break
+                else:
+                    Cnkey = cleanStringEnSpace(temp)
+                    break
+            if ';' in temp:
+                tempText2 = tempText[i + 1].replace(' ', '')
+                if tempText2 != '' and '绪论' not in tempText2 and \
+                                '第一章' not in tempText2 and '引言' not in tempText2:
+                    temp = temp + tempText[i + 1]
+                    Cnkey = cleanStringEnSpace(temp)
+                    Cnkey = Cnkey.replace(';','；')
+                    break
+                else:
+                    Cnkey = cleanStringEnSpace(temp)
+                    Cnkey = Cnkey.replace(';', '；')
+                    break
+            if '，' in temp:
+                tempText2 = tempText[i + 1].replace(' ', '')
+                if tempText2 != '' and '绪论' not in tempText2 and \
+                                '第一章' not in tempText2 and '引言' not in tempText2:
+                    temp = temp + tempText[i + 1]
+                    Cnkey = cleanStringEnSpace(temp)
+                    Cnkey = Cnkey.replace('，','；')
+                    break
+                else:
+                    Cnkey = cleanStringEnSpace(temp)
+                    Cnkey = Cnkey.replace('，','；')
+                    break
+            if ',' in temp:
+                tempText2 = tempText[i + 1].replace(' ', '')
+                if tempText2 != '' and '绪论' not in tempText2 and \
+                                '第一章' not in tempText2 and '引言' not in tempText2:
+                    temp = temp + tempText[i + 1]
+                    Cnkey = cleanStringEnSpace(temp)
+                    Cnkey = Cnkey.replace(',', '；')
+                    break
+                else:
+                    Cnkey = cleanStringEnSpace(temp)
+                    Cnkey = Cnkey.replace(',', '；')
+                    break
+            if  ' ' in temp:
+                tempText2 = tempText[i + 1].replace(' ', '')
+                if tempText2 != '' and '绪论' not in tempText2 and \
+                                '第一章' not in tempText2 and '引言' not in tempText2:
+                    temp = temp + tempText[i+1]
+                    Cnkey = cleanDoubleSpace(temp)
+                    break
+        if '关键词：' in temp:
+            temp = temp.split('关键词：')[1]
+            if '；' in temp:
+                tempText2 = tempText[i + 1].replace(' ', '')
+                if tempText2 != '' and '绪论' not in tempText2 and \
+                                '第一章' not in tempText2 and '引言' not in tempText2:
+                    temp = temp + tempText[i + 1]
+                    Cnkey = cleanStringEnSpace(temp)
+                    break
+                else:
+                    Cnkey = cleanStringEnSpace(temp)
+                    break
+            if ';' in temp:
+                tempText2 = tempText[i + 1].replace(' ', '')
+                if tempText2 != '' and '绪论' not in tempText2 and \
+                                '第一章' not in tempText2 and '引言' not in tempText2:
+                    temp = temp + tempText[i + 1]
+                    Cnkey = cleanStringEnSpace(temp)
+                    Cnkey = Cnkey.replace(';','；')
+                    break
+                else:
+                    Cnkey = cleanStringEnSpace(temp)
+                    Cnkey = Cnkey.replace(';', '；')
+                    break
+            if '，' in temp:
+                tempText2 = tempText[i + 1].replace(' ', '')
+                if tempText2!= ''and '绪论'not in tempText2 and \
+                                '第一章'not in tempText2 and '引言' not in tempText2:
+                    temp = temp + tempText[i + 1]
+                    Cnkey = cleanStringEnSpace(temp)
+                    Cnkey = Cnkey.replace('，','；')
+                    break
+                else:
+                    Cnkey = cleanStringEnSpace(temp)
+                    Cnkey = Cnkey.replace('，','；')
+                    break
+            if ',' in temp:
+                tempText2 = tempText[i + 1].replace(' ', '')
+                if tempText2 != '' and '绪论' not in tempText2 and \
+                                '第一章' not in tempText2 and '引言' not in tempText2:
+                    temp = temp + tempText[i + 1]
+                    Cnkey = cleanStringEnSpace(temp)
+                    Cnkey = Cnkey.replace(',', '；')
+                    break
+                else:
+                    Cnkey = cleanStringEnSpace(temp)
+                    Cnkey = Cnkey.replace(',', '；')
+                    break
+            if  ' ' in temp:
+                tempText2 = tempText[i + 1].replace(' ', '')
+                if tempText2 != '' and '绪论' not in tempText2 and \
+                                '第一章' not in tempText2 and '引言' not in tempText2:
+                    temp = temp + tempText[i+1]
+                    Cnkey = cleanDoubleSpace(temp)
+                    break
+        if '关键词:' in temp:
+            temp = temp.split('关键词:')[1]
+            if '；' in temp:
+                tempText2 = tempText[i + 1].replace(' ', '')
+                if tempText2 != '' and '绪论' not in tempText2 and \
+                                '第一章' not in tempText2 and '引言' not in tempText2:
+                    temp = temp + tempText[i + 1]
+                    Cnkey = cleanStringEnSpace(temp)
+                    break
+                else:
+                    Cnkey = cleanStringEnSpace(temp)
+                    break
+            if ';' in temp:
+                tempText2 = tempText[i + 1].replace(' ', '')
+                if tempText2 != '' and '绪论' not in tempText2 and \
+                                '第一章' not in tempText2 and '引言' not in tempText2:
+                    temp = temp + tempText[i + 1]
+                    Cnkey = cleanStringEnSpace(temp)
+                    Cnkey = Cnkey.replace(';','；')
+                    break
+                else:
+                    Cnkey = cleanStringEnSpace(temp)
+                    Cnkey = Cnkey.replace(';', '；')
+                    break
+            if '，' in temp:
+                tempText2 = tempText[i + 1].replace(' ', '')
+                if tempText2!= ''and '绪论'not in tempText2 and \
+                                '第一章'not in tempText2 and '引言' not in tempText2:
+                    temp = temp + tempText[i + 1]
+                    Cnkey = cleanStringEnSpace(temp)
+                    Cnkey = Cnkey.replace('，','；')
+                    break
+                else:
+                    Cnkey = cleanStringEnSpace(temp)
+                    Cnkey = Cnkey.replace('，','；')
+                    break
+            if ',' in temp:
+                tempText2 = tempText[i + 1].replace(' ', '')
+                if tempText2 != '' and '绪论' not in tempText2 and \
+                                '第一章' not in tempText2 and '引言' not in tempText2:
+                    temp = temp + tempText[i + 1]
+                    Cnkey = cleanStringEnSpace(temp)
+                    Cnkey = Cnkey.replace(',', '；')
+                    break
+                else:
+                    Cnkey = cleanStringEnSpace(temp)
+                    Cnkey = Cnkey.replace(',', '；')
+                    break
+            if  ' ' in temp:
+                tempText2 = tempText[i + 1].replace(' ', '')
+                if tempText2 != '' and '绪论' not in tempText2 and \
+                                '第一章' not in tempText2 and '引言' not in tempText2:
+                    temp = temp + tempText[i+1]
+                    Cnkey = cleanDoubleSpace(temp)
+                    break
+    return Cnkey
+
+#获取中文参考文献
+def getCnReferContext(tempText):
+    ReferContext = ''
+    for i in range(len(tempText)-1,-1,-1):
+        itemText = tempText[i].strip()
+        if itemText == '':
+            continue
+        itemText == cleanStringFullSpace(itemText)
+        if '参考文献' in itemText:
+            i  = i + 1
+            break
+    ii = i
+    for ii in range(i,len(tempText),1):
+        itemText = tempText[ii].strip()
+        if itemText == '':
+            continue
+        itemText == cleanStringFullSpace(itemText)
+        if itemText[0] == '[' and str(itemText[1]).isdecimal() and \
+                (str(itemText[2]).isdecimal()and itemText[3] == ']' or itemText[2] == ']'):
+            ReferContext = itemText
+            ii = ii + 1
+            break
+    iii = ii
+    for iii in range(ii,len(tempText),1):
+        itemText = tempText[iii].strip()
+        itemText == cleanStringFullSpace(itemText)
+        if itemText == '':
+            break
+        elif itemText[0] == '[' and str(itemText[1]).isdecimal() and \
+                (str(itemText[2]).isdecimal()and itemText[3] == ']' or itemText[2] == ']'):
+            ReferContext = ReferContext + '；' + itemText
+        else:
+            ReferContext = ReferContext + itemText
+    return ReferContext
+
+#获取英文摘要和关键词
+def getEnabstractAndKey(tempText):
+    Enabstract = ''
+    Enkey = ''
+    try:
+        for i in range(len(tempText)-1,-1,-1):
+            itemText = tempText[i]
+            if itemText.strip() == '':
+                continue
+            if '[Abstract]' in itemText:
+                Enabstract = itemText.split('[Abstract]')[1]
+                break
+            elif '【Abstract】' in itemText:
+                Enabstract = itemText.split('【Abstract】')[1]
+                break
+            elif '[abstract]' in itemText:
+                Enabstract = itemText.split('[abstract]')[1]
+                break
+            elif '【abstract】' in itemText:
+                Enabstract = itemText.split('【abstract】')[1]
+                break
+            elif 'abstract:' in itemText:
+                Enabstract = itemText.split('abstract:')[1]
+                break
+            elif 'Abstract:' in itemText:
+                Enabstract = itemText.split('Abstract:')[1]
+                break
+            elif 'abstract：' in itemText:
+                Enabstract = itemText.split('abstract:')[1]
+                break
+            elif 'Abstract：' in itemText:
+                Enabstract = itemText.split('Abstract:')[1]
+                break
+        if Enabstract != '':
+            for ii in range(i+1,len(tempText),1):
+                itemText = tempText[ii].strip()
+                if itemText == '':
+                    break
+                if itemText[0] == '[' or itemText[0] == '【':
+                    break
+                elif 'Key words' in itemText or 'keyword' in itemText or 'Key Word' in itemText or 'Keyword' in itemText:
+                    break
+                else:
+                    Enabstract = Enabstract + '\n' + itemText
+        if ii < len(tempText):
+            itemText = tempText[ii].strip()
+            if itemText[0] == '[':
+                Enkey = itemText.split(']')[1].strip()
+            elif itemText[0] == '【':
+                Enkey = itemText.split('】')[1].strip()
+
+
+            if ii+1 < len(tempText) - 1:
+                itemText = tempText[ii + 1].strip()
+                if itemText != '':
+                    Enkey = Enkey + itemText
+            if ';'in Enkey:
+                Enkey.replace(';','；')
+            if ','in Enkey:
+                Enkey.replace(',','；')
+    except Exception as err:
+        print(filename + str(err))
+    return Enabstract,Enkey
+
+
+'''
+print(tempText)
+print(getPaparTitle(tempText))
+print(getSnameAndSNo(tempText))
+print(getCollegaAndMajor(tempText))
+print(getTname(tempText))
+print(getTlevel(tempText))
+print(getCnabstract(tempText))
+print(getCnKey(tempText))
+print(getCnReferContext(tempText))
+print(getEnabstractAndKey(tempText))
+'''
+pathName = input('PLEASE INPUT THE PATH:\t')
+
+listAllFolder = getAllFolder(pathName)
+irow = 1
+wb = openpyxl.Workbook()
+sheet = wb.get_active_sheet()
+
+
+for Cdir in listAllFolder:
+    Cdirname = Cdir.split('\\')[-1]
+    if '一般论文' in Cdirname:
+        _levle = '一般论文'
+    elif '优秀论文' in Cdirname:
+        _levle = '优秀论文'
+    else:
+        _levle = '一般论文'
+    listAllFolder = []
+    listFileNames = []
+    listDocFiles = []
+    listDocxFiles = []
+    listFileNames = getCurrentFilenames(Cdir)
+    listFileNames = delTempDocxFiles(listFileNames)
+    listDocFiles,listDocxFiles = splitDocFromDocx(listFileNames)
+    if len(listDocFiles) == 0 and len(listDocxFiles) == 0:#没有DOC和DOCX文件直接跳过
+        continue
+    print('正在处理提取信息的文件夹是：' + Cdir)
+    listDocFiles = delRepeatFiles(listDocFiles,listDocxFiles)
+    listDocxFiles = doc2docx(Cdir,listDocFiles,listDocxFiles)
+    #print(len(listDocxFiles))
+    for filename in listDocxFiles:
+        try:
+            tempText = getText(Cdir + '\\' + filename)
+            tempPaparInfo = copy.copy(PaparInfo)
+            tempPaparInfo['Levle'] = _levle
+            tempPaparInfo['PaparTitle'] = getPaparTitle(tempText)
+            temp = getSnameAndSNo(tempText)
+            tempPaparInfo['Sname'] = temp[0]
+            tempPaparInfo['SNo'] = temp[1]
+            if tempPaparInfo['SNo'] == '':
+                tempPaparInfo['SNo'] = str(filename)
+            temp = getCollegaAndMajor(tempText)
+            tempPaparInfo['Collega'] = temp[0]
+            tempPaparInfo['Major'] = temp[1]
+            tempPaparInfo['Class'] = temp[2]
+            tempPaparInfo['Tname'] = getTname(tempText)
+            tempPaparInfo['Tlevel'] = getTlevel(tempText)
+            tempPaparInfo['Cnabstract'] = getCnabstract(tempText)
+            tempPaparInfo['Cnkey'] = getCnKey(tempText)
+            tempPaparInfo['Refercontext'] = getCnReferContext(tempText)
+    #       temp = getEnabstractAndKey(tempText)
+    #       tempPaparInfo['Enabstract'] = temp[0]
+    #       tempPaparInfo['Enkey'] = temp[1]
+            for ik,iv in tempPaparInfo.items():
+                sheet.cell(row=irow, column=ExcleColumNamesTable.get(ik)).value = iv
+            irow += 1
+        #wb.save(Cdir + '\\' + Cdirname +'.xlsx' )
+        except Exception as err:
+            print(Cdir + filename + str(err))
+            sheet.cell(row = irow,column = 2).value = str(filename)
+            irow += 1
+    print('             ' + Cdir + "处理完毕！")
+wb.save(pathName + r'\niuwa.xlsx')
